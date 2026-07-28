@@ -1,0 +1,9 @@
+model Message {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([senderId, receiverId]) // <-- Prisma's way of indexing
+}
