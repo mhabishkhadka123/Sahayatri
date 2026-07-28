@@ -1,0 +1,358 @@
+// This is your Prisma schema file
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"   
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum MatchStatus {
+  pending
+  matched
+  blocked
+}
+
+enum NotificationType {
+  like
+  match
+  message
+  view
+  favorite
+  system
+}
+
+enum SubscriptionPlan {
+  free
+  gold
+  premium
+}
+
+enum ActivityType {
+  login
+  profile_update
+  photo_upload
+  like_sent
+  match_created
+  message_sent
+  profile_viewed
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  firstName   String
+  lastName    String
+  gender      String
+  dateOfBirth DateTime
+  bio         String?
+  city        String?
+  height      String?
+  religion    String?
+  occupation  String?
+  education   String?
+  phone       String?
+  isVerified  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  role        Role     @default(USER)
+
+  // Tokens
+  verificationToken String? @unique
+  refreshToken      String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  profile      Profile?
+  photos       Photo[]
+  subscription Subscription?
+
+  // Likes
+  sentLikes     Like[] @relation("LikedBy")
+  receivedLikes Like[] @relation("LikedByOther")
+
+  // Matches
+  initiatedMatches Match[] @relation("UserOne")
+  receivedMatches  Match[] @relation("UserTwo")
+
+  // Chat
+  sentMessages  Message[]                @relation("Sender")
+  conversations ConversationParticipant[]
+
+  // Notifications
+  notifications     Notification[] @relation("NotificationOwner")
+  sentNotifications Notification[] @relation("NotificationSender")
+
+  // Social
+  favorites         Favorite[]    @relation("FavoriteOwner")
+  favoritedBy       Favorite[]    @relation("FavoritedUser")
+  blockedUsers      Block[]       @relation("Blocker")
+  blockedByUsers    Block[]       @relation("Blocked")
+  reportsMade       Report[]      @relation("Reporter")
+  reportsReceived   Report[]      @relation("Reported")
+  profileViews      ProfileView[] @relation("ViewedProfile")
+  profileViewsMade  ProfileView[] @relation("Viewer")
+
+  // Activity
+  activityLogs ActivityLog[]
+
+  // Password reset
+  passwordResetTokens    PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+}
+
+// ─────────────────────────────────────────────
+// PROFILE
+// ─────────────────────────────────────────────
+
+model Profile {
+  id        String   @id @default(uuid()) @map("_id") @db.ObjectId // or @default(cuid()) if postgres
+  userId    String   @unique
+  city      String?
+  religion  String?
+  occupation String?
+  isOnline  Boolean  @default(false)
+  lastActive DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([city])
+  @@index([religion])
+  @@index([isOnline])
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([senderId, receiverId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// PHOTO
+// ─────────────────────────────────────────────
+
+model Photo {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url          String
+  cloudinaryId String?
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// LIKE
+// ─────────────────────────────────────────────
+
+model Like {
+  id             String   @id @default(cuid())
+  likedById      String
+  likedBy        User     @relation("LikedBy", fields: [likedById], references: [id], onDelete: Cascade)
+  likedByOtherId String
+  likedByOther   User     @relation("LikedByOther", fields: [likedByOtherId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  @@unique([likedById, likedByOtherId])
+}
+
+// ─────────────────────────────────────────────
+// MATCH
+// ─────────────────────────────────────────────
+
+model Match {
+  id        String      @id @default(cuid())
+  userOneId String
+  userOne   User        @relation("UserOne", fields: [userOneId], references: [id], onDelete: Cascade)
+  userTwoId String
+  userTwo   User        @relation("UserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
+  status    MatchStatus @default(matched)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userOneId, userTwoId])
+}
+
+// ─────────────────────────────────────────────
+// CONVERSATION & MESSAGES
+// ─────────────────────────────────────────────
+
+model Conversation {
+  id           String                   @id @default(cuid())
+  participants ConversationParticipant[]
+  messages     Message[]
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime     @default(now())
+
+  @@unique([userId, conversationId])
+}
+
+
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation("NotificationOwner", fields: [userId], references: [id], onDelete: Cascade)
+  type       NotificationType
+  fromUserId String?
+  fromUser   User?            @relation("NotificationSender", fields: [fromUserId], references: [id], onDelete: SetNull)
+  message    String?
+  read       Boolean          @default(false)
+  data       Json?            // Extra metadata (matchId, conversationId, etc.)
+  createdAt  DateTime         @default(now())
+}
+
+// ─────────────────────────────────────────────
+// FAVORITES
+// ─────────────────────────────────────────────
+
+model Favorite {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation("FavoriteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  favoritedId String
+  favorited   User     @relation("FavoritedUser", fields: [favoritedId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([ownerId, favoritedId])
+}
+
+// ─────────────────────────────────────────────
+// BLOCKS
+// ─────────────────────────────────────────────
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+}
+
+// ─────────────────────────────────────────────
+// REPORTS
+// ─────────────────────────────────────────────
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String
+  reporter   User     @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedId String
+  reported   User     @relation("Reported", fields: [reportedId], references: [id], onDelete: Cascade)
+  reason     String
+  details    String?
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// PROFILE VIEWS ("Who Viewed Me")
+// ─────────────────────────────────────────────
+
+model ProfileView {
+  id              String   @id @default(cuid())
+  viewedProfileId String
+  viewedProfile   User     @relation("ViewedProfile", fields: [viewedProfileId], references: [id], onDelete: Cascade)
+  viewerId        String
+  viewer          User     @relation("Viewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  viewedAt        DateTime @default(now())
+
+  @@unique([viewedProfileId, viewerId])
+}
+
+// ─────────────────────────────────────────────
+// SUBSCRIPTIONS
+// ─────────────────────────────────────────────
+
+model Subscription {
+  id        String           @id @default(cuid())
+  userId    String           @unique
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan @default(free)
+  startDate DateTime         @default(now())
+  endDate   DateTime?
+  isActive  Boolean          @default(true)
+  // TODO: Add payment gateway fields (Stripe customerId, subscriptionId) when integrating payments
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// PASSWORD RESET TOKENS
+// ─────────────────────────────────────────────
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// EMAIL VERIFICATION TOKENS
+// ─────────────────────────────────────────────
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY LOG
+// ─────────────────────────────────────────────
+
+model ActivityLog {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      ActivityType
+  metadata  Json?
+  createdAt DateTime     @default(now())
+}
