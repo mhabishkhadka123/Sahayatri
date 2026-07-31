@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import MainLayout from '../components/Layout/MainLayout';
 import { useAuthStore } from '../context/store';
@@ -11,34 +11,75 @@ const Profile = () => {
   const { user, setUser } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // 1. Initialize form state
   const [formData, setFormData] = useState({
-    firstName: user?.firstName || '',
-    lastName: user?.lastName || '',
-    bio: user?.bio || '',
-    city: user?.city || '',
-    height: user?.height || '',
-    religion: user?.religion || '',
-    occupation: user?.occupation || '',
+    firstName: '',
+    lastName: '',
+    bio: '',
+    city: '',
+    height: '',
+    religion: '',
+    occupation: '',
   });
 
+  // 2. Automatically sync formData whenever the logged-in user data loads or updates
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        bio: user.bio || '',
+        city: user.city || '',
+        height: user.height || '',
+        religion: user.religion || '',
+        occupation: user.occupation || '',
+      });
+    }
+  }, [user]);
+
+  // 3. Universal input handler
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = async () => {
+  // 4. Handle Save & Update Backend
+  const handleSave = async (e) => {
+    if (e) e.preventDefault();
     setIsLoading(true);
+
     try {
       const response = await profileService.updateProfile(formData);
-      setUser(response.data.user);
+      // Update global user store with new data
+      setUser(response.data.user || response.data);
       setIsEditing(false);
+      alert('Profile updated successfully!');
     } catch (error) {
       console.error('Error updating profile:', error);
+      alert('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 5. Handle Cancel (revert unsaved changes back to current user data)
+  const handleCancel = () => {
+    if (user) {
+      setFormData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        bio: user.bio || '',
+        city: user.city || '',
+        height: user.height || '',
+        religion: user.religion || '',
+        occupation: user.occupation || '',
+      });
+    }
+    setIsEditing(false);
+  };
+
+  // 6. Handle Photo Upload
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -48,11 +89,14 @@ const Profile = () => {
       const formDataObj = new FormData();
       formDataObj.append('photo', file);
       await profileService.uploadPhoto(formDataObj);
-      // Refresh user data
+
+      // Refresh user data after upload
       const response = await profileService.getProfile(user?.id);
       setUser(response.data);
+      alert('Photo updated successfully!');
     } catch (error) {
       console.error('Error uploading photo:', error);
+      alert('Failed to upload photo.');
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +126,11 @@ const Profile = () => {
               <div className="mb-6">
                 <div className="w-full aspect-square bg-gray-200 rounded-lg mb-4 flex items-center justify-center text-5xl overflow-hidden">
                   {user?.photo ? (
-                    <img src={user.photo} alt={user.firstName} className="w-full h-full object-cover" />
+                    <img
+                      src={user.photo}
+                      alt={user.firstName || 'Profile'}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     '👤'
                   )}
@@ -118,7 +166,7 @@ const Profile = () => {
               </div>
             </motion.div>
 
-            {/* Profile Information */}
+            {/* Profile Information Section */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -129,13 +177,13 @@ const Profile = () => {
                 <h2 className="text-2xl font-bold text-gray-900">Information</h2>
                 <Button
                   variant={isEditing ? 'secondary' : 'primary'}
-                  onClick={() => setIsEditing(!isEditing)}
+                  onClick={isEditing ? handleCancel : () => setIsEditing(true)}
                 >
                   {isEditing ? 'Cancel' : 'Edit'}
                 </Button>
               </div>
 
-              <div className="space-y-4">
+              <form onSubmit={handleSave} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <Input
                     label="First Name"
@@ -198,12 +246,17 @@ const Profile = () => {
 
                 {isEditing && (
                   <div className="flex gap-4 pt-4">
-                    <Button variant="primary" fullWidth onClick={handleSave} disabled={isLoading}>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      fullWidth
+                      disabled={isLoading}
+                    >
                       {isLoading ? 'Saving...' : 'Save Changes'}
                     </Button>
                   </div>
                 )}
-              </div>
+              </form>
             </motion.div>
           </div>
         </div>
