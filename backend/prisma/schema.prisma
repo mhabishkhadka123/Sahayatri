@@ -6,48 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"   
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-// ─────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────
-
-enum Role {
-  USER
-  ADMIN
-}
-
-enum MatchStatus {
-  pending
-  matched
-  blocked
-}
-
-enum NotificationType {
-  like
-  match
-  message
-  view
-  favorite
-  system
-}
-
-enum SubscriptionPlan {
-  free
-  gold
-  premium
-}
-
-enum ActivityType {
-  login
-  profile_update
-  photo_upload
-  like_sent
-  match_created
-  message_sent
-  profile_viewed
 }
 
 // ─────────────────────────────────────────────
@@ -71,7 +31,7 @@ model User {
   phone       String?
   isVerified  Boolean  @default(false)
   isActive    Boolean  @default(true)
-  role        Role     @default(USER)
+  role        String   @default("USER")
 
   // Tokens
   verificationToken String? @unique
@@ -125,14 +85,16 @@ model User {
 // ─────────────────────────────────────────────
 
 model Profile {
-  id        String   @id @default(uuid()) @map("_id") @db.ObjectId // or @default(cuid()) if postgres
-  userId    String   @unique
-  city      String?
-  religion  String?
-  occupation String?
-  isOnline  Boolean  @default(false)
-  lastActive DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  city              String?
+  religion          String?
+  occupation        String?
+  profileCompletion Int?     @default(0)
+  profileViewCount  Int      @default(0)
+  isOnline          Boolean  @default(false)
+  lastActive        DateTime?
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([city])
   @@index([religion])
@@ -140,13 +102,18 @@ model Profile {
 }
 
 model Message {
-  id         String   @id @default(uuid())
-  senderId   String
-  receiverId String
-  content    String
-  createdAt  DateTime @default(now())
+  id             String   @id @default(cuid())
+  senderId       String
+  conversationId String
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
 
-  @@index([senderId, receiverId])
+  sender         User     @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([conversationId])
   @@index([createdAt])
 }
 
@@ -184,14 +151,14 @@ model Like {
 // ─────────────────────────────────────────────
 
 model Match {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   userOneId String
-  userOne   User        @relation("UserOne", fields: [userOneId], references: [id], onDelete: Cascade)
+  userOne   User     @relation("UserOne", fields: [userOneId], references: [id], onDelete: Cascade)
   userTwoId String
-  userTwo   User        @relation("UserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
-  status    MatchStatus @default(matched)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  userTwo   User     @relation("UserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
+  status    String   @default("matched")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userOneId, userTwoId])
 }
@@ -226,16 +193,16 @@ model ConversationParticipant {
 // ─────────────────────────────────────────────
 
 model Notification {
-  id         String           @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
-  user       User             @relation("NotificationOwner", fields: [userId], references: [id], onDelete: Cascade)
-  type       NotificationType
+  user       User     @relation("NotificationOwner", fields: [userId], references: [id], onDelete: Cascade)
+  type       String
   fromUserId String?
-  fromUser   User?            @relation("NotificationSender", fields: [fromUserId], references: [id], onDelete: SetNull)
+  fromUser   User?    @relation("NotificationSender", fields: [fromUserId], references: [id], onDelete: SetNull)
   message    String?
-  read       Boolean          @default(false)
-  data       Json?            // Extra metadata (matchId, conversationId, etc.)
-  createdAt  DateTime         @default(now())
+  read       Boolean  @default(false)
+  data       String?
+  createdAt  DateTime @default(now())
 }
 
 // ─────────────────────────────────────────────
@@ -304,16 +271,15 @@ model ProfileView {
 // ─────────────────────────────────────────────
 
 model Subscription {
-  id        String           @id @default(cuid())
-  userId    String           @unique
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan      SubscriptionPlan @default(free)
-  startDate DateTime         @default(now())
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan      String   @default("free")
+  startDate DateTime @default(now())
   endDate   DateTime?
-  isActive  Boolean          @default(true)
-  // TODO: Add payment gateway fields (Stripe customerId, subscriptionId) when integrating payments
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────
@@ -349,10 +315,10 @@ model EmailVerificationToken {
 // ─────────────────────────────────────────────
 
 model ActivityLog {
-  id        String       @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      ActivityType
-  metadata  Json?
-  createdAt DateTime     @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  metadata  String?
+  createdAt DateTime @default(now())
 }

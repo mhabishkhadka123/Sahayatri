@@ -123,7 +123,7 @@ export const signup = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const userId = req.userId; // Provided by your auth middleware
+    const userId = req.userId;
     const {
       firstName,
       lastName,
@@ -136,22 +136,32 @@ export const updateProfile = async (req, res) => {
       phone,
     } = req.body;
 
+    const profileUpdateData = {};
+    if (city !== undefined) profileUpdateData.city = city;
+    if (religion !== undefined) profileUpdateData.religion = religion;
+    if (occupation !== undefined) profileUpdateData.occupation = occupation;
+
+    await prisma.profile.upsert({
+      where: { userId },
+      update: profileUpdateData,
+      create: {
+        userId,
+        ...profileUpdateData,
+      },
+    });
+
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         firstName,
         lastName,
-        profile: {
-          update: {
-            bio,
-            city,
-            height: height ? parseFloat(height) : undefined,
-            religion,
-            occupation,
-            education,
-            phone,
-          },
-        },
+        bio,
+        city,
+        height,
+        religion,
+        occupation,
+        education,
+        phone,
       },
       include: {
         profile: true,
@@ -160,7 +170,7 @@ export const updateProfile = async (req, res) => {
     });
 
     const completionScore = calcProfileCompletion(updatedUser);
-    
+
     await prisma.profile.update({
       where: { userId },
       data: { profileCompletion: completionScore },
