@@ -12,6 +12,7 @@ import discoveryRoutes from './routes/discovery.js';
 import matchRoutes from './routes/matches.js';
 import chatRoutes from './routes/chat.js';
 import notificationRoutes from './routes/notifications.js';
+import kundaliRoutes from './routes/kundali.js';
 
 dotenv.config();
 
@@ -47,6 +48,7 @@ app.use('/api/discovery', discoveryRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/kundali', kundaliRoutes);
 
 // Socket.io events
 io.on('connection', (socket) => {
