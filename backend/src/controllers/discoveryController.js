@@ -1,25 +1,75 @@
 import { prisma } from '../index.js';
+import { sanitizeKundaliForPublic, sanitizeProfileForPublic } from '../utils/kundaliSanitize.js';
+
+const sanitizePublicUser = (user) => ({
+  ...user,
+  profile: sanitizeProfileForPublic(user.profile),
+  kundali: sanitizeKundaliForPublic(user.kundali),
+});
 
 export const browseProfiles = async (req, res) => {
   try {
-    const { ageMin = 18, ageMax = 60, gender, limit = 10, offset = 0 } = req.query;
+    const { ageMin = 18, ageMax = 60, gender, city, maxDistance, limit = 10, offset = 0 } = req.query;
+
+    const today = new Date();
+    const maxBirthDate = new Date(today.getFullYear() - parseInt(ageMin), today.getMonth(), today.getDate());
+    const minBirthDate = new Date(today.getFullYear() - parseInt(ageMax) - 1, today.getMonth(), today.getDate() + 1);
 
     const where = {
       NOT: { id: req.userId },
+      isActive: true,
+      dateOfBirth: {
+        gte: minBirthDate,
+        lte: maxBirthDate,
+      },
     };
 
     if (gender) {
       where.gender = gender;
     }
 
-    const profiles = await prisma.user.findMany({
+    if (city) {
+      where.city = { contains: city };
+    }
+
+    let profiles = await prisma.user.findMany({
       where,
-      include: { photos: true },
-      take: parseInt(limit),
-      skip: parseInt(offset),
+      include: { photos: true, profile: true, kundali: true },
     });
 
-    res.json({ profiles });
+    if (maxDistance) {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: req.userId },
+        include: { profile: true }
+      });
+      
+      const userLat = currentUser?.profile?.latitude;
+      const userLon = currentUser?.profile?.longitude;
+      
+      if (userLat && userLon) {
+        profiles = profiles.filter(p => {
+          const pLat = p.profile?.latitude;
+          const pLon = p.profile?.longitude;
+          if (!pLat || !pLon) return false;
+          
+          const R = 6371; // km
+          const dLat = (pLat - userLat) * Math.PI / 180;
+          const dLon = (pLon - userLon) * Math.PI / 180;
+          const a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(userLat * Math.PI / 180) * Math.cos(pLat * Math.PI / 180) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          const distance = R * c;
+          
+          return distance <= parseFloat(maxDistance);
+        });
+      }
+    }
+
+    const paginatedProfiles = profiles.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+
+    res.json({ profiles: paginatedProfiles.map(sanitizePublicUser) });
   } catch (error) {
     console.error('Browse profiles error:', error);
     res.status(500).json({ error: 'Failed to fetch profiles' });
@@ -39,9 +89,9 @@ export const searchProfiles = async (req, res) => {
         AND: [
           {
             OR: [
-              { firstName: { contains: query, mode: 'insensitive' } },
-              { lastName: { contains: query, mode: 'insensitive' } },
-              { city: { contains: query, mode: 'insensitive' } },
+              { firstName: { contains: query } },
+              { lastName: { contains: query } },
+              { city: { contains: query } },
             ],
           },
           { NOT: { id: req.userId } },
@@ -68,6 +118,7 @@ export const getProfileDetails = async (req, res) => {
       include: {
         photos: true,
         profile: true,
+        kundali: true,
       },
     });
 
@@ -75,7 +126,7 @@ export const getProfileDetails = async (req, res) => {
       return res.status(404).json({ error: 'Profile not found' });
     }
 
-    res.json(profile);
+    res.json(sanitizePublicUser(profile));
   } catch (error) {
     console.error('Get profile details error:', error);
     res.status(500).json({ error: 'Failed to fetch profile details' });
