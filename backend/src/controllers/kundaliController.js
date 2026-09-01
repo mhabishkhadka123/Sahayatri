@@ -1,12 +1,17 @@
+import { prisma } from '../index.js';
 import { generateKundali, calculateCompatibility } from '../utils/kundaliService.js';
 
 // @desc    Get current user's Kundali
 // @route   GET /api/kundali
 export const getKundali = async (req, res) => {
   try {
-    const kundali = req.user?.kundali || null;
-    return res.status(200).json({ success: true, kundali });
+    const kundali = await prisma.kundali.findUnique({
+      where: { userId: req.userId },
+    });
+
+    return res.status(200).json({ success: true, kundali: kundali || null });
   } catch (error) {
+    console.error('Get kundali error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -15,8 +20,38 @@ export const getKundali = async (req, res) => {
 // @route   PUT /api/kundali
 export const upsertKundali = async (req, res) => {
   try {
-    return res.status(200).json({ success: true, message: 'Kundali updated' });
+    const { birthTime, birthPlace, latitude, longitude, timezone, zodiacSign, nakshatra, moonSign, isVisible } = req.body;
+
+    const kundali = await prisma.kundali.upsert({
+      where: { userId: req.userId },
+      create: {
+        userId: req.userId,
+        birthTime: birthTime || null,
+        birthPlace: birthPlace || null,
+        latitude: latitude ? parseFloat(latitude) : null,
+        longitude: longitude ? parseFloat(longitude) : null,
+        timezone: timezone || null,
+        zodiacSign: zodiacSign || null,
+        nakshatra: nakshatra || null,
+        moonSign: moonSign || null,
+        isVisible: isVisible !== false,
+      },
+      update: {
+        birthTime: birthTime !== undefined ? birthTime : undefined,
+        birthPlace: birthPlace !== undefined ? birthPlace : undefined,
+        latitude: latitude !== undefined ? (latitude ? parseFloat(latitude) : null) : undefined,
+        longitude: longitude !== undefined ? (longitude ? parseFloat(longitude) : null) : undefined,
+        timezone: timezone !== undefined ? timezone : undefined,
+        zodiacSign: zodiacSign !== undefined ? zodiacSign : undefined,
+        nakshatra: nakshatra !== undefined ? nakshatra : undefined,
+        moonSign: moonSign !== undefined ? moonSign : undefined,
+        isVisible: isVisible !== undefined ? isVisible : undefined,
+      },
+    });
+
+    return res.status(200).json({ success: true, kundali, message: 'Kundali updated' });
   } catch (error) {
+    console.error('Upsert kundali error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -25,7 +60,7 @@ export const upsertKundali = async (req, res) => {
 // @route   POST /api/kundali/generate
 export const generateAndSaveKundali = async (req, res) => {
   try {
-    const { dateOfBirth, birthTime, birthPlace, latitude, longitude, timezone, isVisible } = req.body;
+    const { dateOfBirth, birthTime, birthPlace, latitude, longitude, timezone, isVisible, save } = req.body;
 
     const calculated = generateKundali({
       dateOfBirth,
@@ -48,8 +83,22 @@ export const generateAndSaveKundali = async (req, res) => {
       isVisible: isVisible !== false,
     };
 
-    return res.status(200).json({ success: true, data: kundaliResult, kundali: kundaliResult });
+    // Save to database if requested
+    if (save) {
+      const savedKundali = await prisma.kundali.upsert({
+        where: { userId: req.userId },
+        create: {
+          userId: req.userId,
+          ...kundaliResult,
+        },
+        update: kundaliResult,
+      });
+      return res.status(200).json({ success: true, kundali: savedKundali, calculated: kundaliResult });
+    }
+
+    return res.status(200).json({ success: true, calculated: kundaliResult, kundali: kundaliResult });
   } catch (error) {
+    console.error('Generate kundali error:', error);
     return res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -58,8 +107,22 @@ export const generateAndSaveKundali = async (req, res) => {
 // @route   GET /api/kundali/compatibility/:userId
 export const getCompatibility = async (req, res) => {
   try {
-    return res.status(200).json({ success: true, compatibility: { score: 85, level: 'Good' } });
+    const { userId: otherUserId } = req.params;
+
+    const [myKundali, otherKundali] = await Promise.all([
+      prisma.kundali.findUnique({ where: { userId: req.userId } }),
+      prisma.kundali.findUnique({ where: { userId: otherUserId } }),
+    ]);
+
+    if (!myKundali || !otherKundali) {
+      return res.status(404).json({ success: false, error: 'Kundali data not found' });
+    }
+
+    const compatibility = calculateCompatibility(myKundali, otherKundali);
+
+    return res.status(200).json({ success: true, compatibility });
   } catch (error) {
+    console.error('Get compatibility error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };

@@ -1,4 +1,17 @@
 import { prisma } from '../index.js';
+import { sanitizeKundaliForPublic, sanitizeProfileForPublic } from '../utils/kundaliSanitize.js';
+
+const sanitizeMatchUser = (user) => ({
+  ...user,
+  profile: sanitizeProfileForPublic(user.profile),
+  kundali: sanitizeKundaliForPublic(user.kundali),
+});
+
+const sanitizeMatch = (match, userId) => ({
+  ...match,
+  userOne: match.userOneId === userId ? match.userOne : sanitizeMatchUser(match.userOne),
+  userTwo: match.userTwoId === userId ? match.userTwo : sanitizeMatchUser(match.userTwo),
+});
 
 export const likeProfile = async (req, res) => {
   try {
@@ -88,12 +101,12 @@ export const getMatches = async (req, res) => {
         status: 'matched',
       },
       include: {
-        userOne: { include: { photos: true } },
-        userTwo: { include: { photos: true } },
+        userOne: { include: { photos: true, profile: true, kundali: true } },
+        userTwo: { include: { photos: true, profile: true, kundali: true } },
       },
     });
 
-    res.json({ matches });
+    res.json({ matches: matches.map((m) => sanitizeMatch(m, req.userId)) });
   } catch (error) {
     console.error('Get matches error:', error);
     res.status(500).json({ error: 'Failed to fetch matches' });
@@ -107,8 +120,8 @@ export const getMatchDetails = async (req, res) => {
     const match = await prisma.match.findUnique({
       where: { id: matchId },
       include: {
-        userOne: { include: { photos: true } },
-        userTwo: { include: { photos: true } },
+        userOne: { include: { photos: true, profile: true, kundali: true } },
+        userTwo: { include: { photos: true, profile: true, kundali: true } },
       },
     });
 
