@@ -3,7 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -34,6 +35,12 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
 }));
+
+// Simple request logger to help debug 404s and incoming requests
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -92,6 +99,15 @@ server.headersTimeout = 125000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
+});
+
+// Graceful error handling for listen errors (e.g., EADDRINUSE)
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} already in use. Kill the existing process or set a different PORT.`);
+    process.exit(1);
+  }
+  throw err;
 });
 
 process.on('SIGINT', async () => {
