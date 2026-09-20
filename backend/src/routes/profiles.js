@@ -7,6 +7,8 @@ import {
   setPrimaryPhoto,
   deletePhoto,
   getPhotos,
+  getPhotoDebug,
+  getPhoto,
   getProfileViews,
   toggleFavorite,
   getFavorites,
@@ -31,6 +33,9 @@ router.get('/me/photos', authenticate, getPhotos);
 router.post('/me/photos', authenticate, uploadRateLimiter, uploadMiddleware, uploadPhoto);
 router.patch('/me/photos/:photoId/primary', authenticate, setPrimaryPhoto);
 router.delete('/me/photos/:photoId', authenticate, deletePhoto);
+router.get('/photo/:photoId', getPhoto);
+// Development debug endpoint to inspect photo records quickly
+router.get('/debug/photo/:photoId', getPhotoDebug);
 
 // ─── Who Viewed Me ────────────────────────────────────────────────────────────
 router.get('/me/views', authenticate, validatePagination, validate, getProfileViews);
