@@ -9,6 +9,7 @@
 import { prisma } from '../index.js';
 import config from '../config/index.js';
 import { uploadToCloudinary, deleteFromCloudinary } from '../utils/cloudinary.js';
+import { sanitizeKundaliForPublic, sanitizeProfileForPublic } from '../utils/kundaliSanitize.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,24 @@ const USER_PUBLIC_SELECT = {
   createdAt: true,
   profile: true,
   photos: true,
+  kundali: true,
   // Never expose: password, refreshToken, verificationToken, role, phone (privacy)
+};
+
+// ─── Debug: Get Photo Record (development only) ──────────────────────────────
+export const getPhotoDebug = async (req, res) => {
+  try {
+    const { photoId } = req.params;
+    if (!photoId) return res.status(400).json({ error: 'Missing photoId' });
+
+    const photo = await prisma.photo.findUnique({ where: { id: photoId } });
+    if (!photo) return res.status(404).json({ error: 'Photo not found' });
+
+    return res.json(photo);
+  } catch (error) {
+    console.error('Get photo debug error:', error);
+    res.status(500).json({ error: 'Failed to fetch photo' });
+  }
 };
 
 /** Calculate profile completion percentage */
@@ -47,6 +65,21 @@ const calcProfileCompletion = (user) => {
   if (hasPhoto) score += 20;
 
   return Math.min(100, Math.round((score / max) * 100));
+};
+
+const parseOptionalCoordinate = (value, label, min, max) => {
+  if (value === undefined) return { provided: false };
+  if (value === '' || value === null) return { provided: true, value: null };
+
+  const parsed = parseFloat(value);
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+    return {
+      provided: true,
+      error: `${label} must be between ${min} and ${max}.`,
+    };
+  }
+
+  return { provided: true, value: parsed };
 };
 
 // ─── Get My Profile ────────────────────────────────────────────────────────────
@@ -159,7 +192,11 @@ export const getProfile = async (req, res) => {
       }).catch(console.error);
     }
 
-    return res.json(user);
+    return res.json({
+      ...user,
+      profile: sanitizeProfileForPublic(user.profile),
+      kundali: sanitizeKundaliForPublic(user.kundali),
+    });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Failed to fetch profile' });
@@ -170,21 +207,85 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName, bio, city, height, religion, occupation, education, phone } = req.body;
+    const {
+      firstName,
+      lastName,
+      gender,
+      dateOfBirth,
+      bio,
+      city,
+      height,
+      religion,
+      occupation,
+      education,
+      phone,
+      latitude,
+      longitude,
+      district,
+      region,
+      country,
+    } = req.body;
+
+    const updateData = {};
+    const possibleFields = {
+      firstName,
+      lastName,
+      gender,
+      bio,
+      city,
+      height,
+      religion,
+      occupation,
+      education,
+      phone,
+    };
+
+    for (const [key, value] of Object.entries(possibleFields)) {
+      if (value !== undefined) {
+        updateData[key] = value;
+      }
+    }
+
+    if (dateOfBirth !== undefined) {
+      updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
+
+    const profileUpdateData = {};
+    if (city !== undefined) profileUpdateData.city = city;
+    if (religion !== undefined) profileUpdateData.religion = religion;
+    if (occupation !== undefined) profileUpdateData.occupation = occupation;
+    const latitudeResult = parseOptionalCoordinate(latitude, 'Latitude', -90, 90);
+    if (latitudeResult.error) {
+      return res.status(400).json({ error: latitudeResult.error });
+    }
+    if (latitudeResult.provided) {
+      profileUpdateData.latitude = latitudeResult.value;
+    }
+
+    const longitudeResult = parseOptionalCoordinate(longitude, 'Longitude', -180, 180);
+    if (longitudeResult.error) {
+      return res.status(400).json({ error: longitudeResult.error });
+    }
+    if (longitudeResult.provided) {
+      profileUpdateData.longitude = longitudeResult.value;
+    }
+
+    if (district !== undefined) profileUpdateData.district = district;
+    if (region !== undefined) profileUpdateData.region = region;
+    if (country !== undefined) profileUpdateData.country = country;
+
+    await prisma.profile.upsert({
+      where: { userId: req.userId },
+      update: profileUpdateData,
+      create: {
+        userId: req.userId,
+        ...profileUpdateData,
+      },
+    });
 
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: {
-        ...(firstName !== undefined && { firstName }),
-        ...(lastName !== undefined && { lastName }),
-        ...(bio !== undefined && { bio }),
-        ...(city !== undefined && { city }),
-        ...(height !== undefined && { height }),
-        ...(religion !== undefined && { religion }),
-        ...(occupation !== undefined && { occupation }),
-        ...(education !== undefined && { education }),
-        ...(phone !== undefined && { phone }),
-      },
+      data: updateData,
       select: {
         ...USER_PUBLIC_SELECT,
         phone: true,
@@ -192,19 +293,26 @@ export const updateProfile = async (req, res) => {
       },
     });
 
-    // Recalculate and save completion
     const completion = calcProfileCompletion(user);
     await prisma.profile.updateMany({
       where: { userId: req.userId },
       data: { profileCompletion: completion },
     });
 
-    // Log activity
     await prisma.activityLog.create({
       data: { userId: req.userId, type: 'profile_update' },
     });
 
-    res.json({ user: { ...user, profileCompletion: completion } });
+    const refreshedUser = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: {
+        ...USER_PUBLIC_SELECT,
+        phone: true,
+        subscription: true,
+      },
+    });
+
+    res.json({ user: { ...refreshedUser, profileCompletion: completion } });
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
@@ -244,8 +352,7 @@ export const uploadPhoto = async (req, res) => {
       cloudinaryId = result.public_id;
     } else {
       // Development fallback: use a data URL
-      // TODO: Configure Cloudinary in .env for production
-      console.info('☁️  Cloudinary not configured. Using local file buffer as URL placeholder.');
+      console.info('☁️ Cloudinary not configured. Using local file buffer as URL placeholder.');
       photoUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
       cloudinaryId = null;
     }
@@ -591,6 +698,71 @@ export const reportUser = async (req, res) => {
   } catch (error) {
     console.error('Report user error:', error);
     res.status(500).json({ error: 'Failed to submit report' });
+  }
+};
+
+// ─── Serve Photo ──────────────────────────────────────────────────────────────
+/**
+ * GET /photo/:photoId
+ * Serves a photo from the database.
+ * Handles both data URLs (base64) and external URLs (Cloudinary redirects).
+ */
+export const getPhoto = async (req, res) => {
+  try {
+    const { photoId } = req.params;
+
+    // Validate photoId format
+    if (!photoId || typeof photoId !== 'string' || photoId.trim().length === 0) {
+      return res.status(400).json({ error: 'Invalid photo ID' });
+    }
+
+    // Fetch photo from database
+    const photo = await prisma.photo.findUnique({
+      where: { id: photoId },
+      select: { id: true, url: true, userId: true },
+    });
+
+    // Return 404 if photo not found
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    // Handle data URLs (base64 encoded images from development/local storage)
+    if (photo.url.startsWith('data:')) {
+      try {
+        // Parse data URL: data:image/jpeg;base64,<base64string>
+        const matches = photo.url.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+          return res.status(500).json({ error: 'Invalid data URL format' });
+        }
+
+        const [, mimeType, base64Data] = matches;
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        // Set appropriate content-type and cache headers
+        res.set('Content-Type', mimeType || 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=31536000'); // 1 year cache
+        res.set('ETag', `"${photoId}"`);
+        
+        return res.send(buffer);
+      } catch (error) {
+        console.error('Data URL parsing error:', error);
+        return res.status(500).json({ error: 'Failed to process photo' });
+      }
+    }
+
+    // Handle external URLs (Cloudinary, etc.) - redirect to the external URL
+    if (photo.url.startsWith('http://') || photo.url.startsWith('https://')) {
+      // Set cache headers for external URLs
+      res.set('Cache-Control', 'public, max-age=31536000'); // 1 year cache
+      return res.redirect(301, photo.url);
+    }
+
+    // If URL format is unrecognized, return 400
+    return res.status(400).json({ error: 'Unsupported photo URL format' });
+  } catch (error) {
+    console.error('Get photo error:', error);
+    res.status(500).json({ error: 'Failed to fetch photo' });
   }
 };
 
