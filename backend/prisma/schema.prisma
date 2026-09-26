@@ -43,6 +43,7 @@ model User {
 
   // Relations
   profile      Profile?
+  kundali      Kundali?
   photos       Photo[]
   subscription Subscription?
 
@@ -89,6 +90,11 @@ model Profile {
   userId            String   @unique
   city              String?
   religion          String?
+  latitude          Float?
+  longitude         Float?
+  district          String?
+  region            String?
+  country           String?
   occupation        String?
   profileCompletion Int?     @default(0)
   profileViewCount  Int      @default(0)
@@ -99,6 +105,32 @@ model Profile {
   @@index([city])
   @@index([religion])
   @@index([isOnline])
+  @@index([latitude, longitude])
+}
+
+// ─────────────────────────────────────────────
+// KUNDALI
+// ─────────────────────────────────────────────
+
+model Kundali {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  birthTime   String?          // HH:MM format
+  birthPlace  String?          // City/place name
+  latitude    Float?           // Birth place latitude
+  longitude   Float?           // Birth place longitude
+  timezone    String?          // e.g. "Asia/Kathmandu"
+  zodiacSign  String?          // Rashi (Vedic)
+  nakshatra   String?          // Birth star
+  moonSign    String?          // Chandra Rashi
+  metadata    String?          // JSON string for extensibility
+  isVisible   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([zodiacSign])
+  @@index([nakshatra])
 }
 
 model Message {

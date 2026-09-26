@@ -12,6 +12,9 @@ import Discover from './pages/Discover'
 import Profile from './pages/Profile'
 import Messages from './pages/Messages'
 import Matches from './pages/Matches'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
+import UserProfile from './pages/UserProfile'
 
 // Components
 import ProtectedRoute from './components/ProtectedRoute'
@@ -30,6 +33,8 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Protected Routes */}
         <Route
@@ -69,6 +74,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/user/:userId"
+          element={
+            <ProtectedRoute>
+              <UserProfile />
             </ProtectedRoute>
           }
         />

@@ -41,7 +41,7 @@ const calcProfileCompletion = (user) => {
   return Math.round(((filled + photoScore) / (fields.length + 1)) * 100);
 };
 
-// ─── Signup ──────────────────────────────────────────────────────────────────
+// ─ Sign
 
 export const signup = async (req, res) => {
   try {

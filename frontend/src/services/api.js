@@ -1,6 +1,15 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+// Default to backend on localhost in development so requests go to port 5000
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const normalizeApiBase = (base) => {
+  if (!base) return '/api';
+  if (base.startsWith('http://') || base.startsWith('https://')) {
+    return base.endsWith('/api') ? base : base.endsWith('/') ? `${base}api` : `${base}/api`;
+  }
+  return base.endsWith('/api') ? base : base.endsWith('/') ? `${base}api` : `${base}/api`;
+};
+const API_URL = normalizeApiBase(rawApiUrl);
 
 const api = axios.create({
   baseURL: API_URL,

@@ -1,20 +1,47 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import MainLayout from '../components/Layout/MainLayout';
 import { useAuthStore } from '../context/store';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button/Button';
+import { profileService, chatService } from '../services';
 
 const Dashboard = () => {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const navigate = useNavigate();
+  const [stats, setStats] = useState([
+    { label: 'Profile Views', value: '0', icon: '👁️' },
+    { label: 'Likes Received', value: '0', icon: '❤️' },
+    { label: 'Messages', value: '0', icon: '💬' },
+    { label: 'Matches', value: '0', icon: '💑' },
+  ]);
 
-  const stats = [
-    { label: 'Profile Views', value: '324', icon: '👁️' },
-    { label: 'Likes Received', value: '48', icon: '❤️' },
-    { label: 'Messages', value: '12', icon: '💬' },
-    { label: 'Matches', value: '8', icon: '💑' },
-  ];
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        const [profileResponse, conversationsResponse] = await Promise.all([
+          profileService.getMyProfile(),
+          chatService.getConversations(),
+        ]);
+
+        const profileData = profileResponse.data;
+        const conversationCount = conversationsResponse.data.conversations?.length || 0;
+
+        setStats([
+          { label: 'Profile Views', value: String(profileData.profile?.profileViewCount || 0), icon: '👁️' },
+          { label: 'Likes Received', value: String(profileData._count?.receivedLikes || 0), icon: '❤️' },
+          { label: 'Messages', value: String(conversationCount), icon: '💬' },
+          { label: 'Matches', value: String((profileData._count?.initiatedMatches || 0) + (profileData._count?.receivedMatches || 0)), icon: '💑' },
+        ]);
+
+        setUser(profileData);
+      } catch (error) {
+        console.error('Dashboard data error:', error);
+      }
+    };
+
+    loadDashboardData();
+  }, [setUser]);
 
   return (
     <MainLayout>
@@ -66,7 +93,7 @@ const Dashboard = () => {
               <Button
                 variant="primary"
                 fullWidth
-                onClick={() => navigate('/profile/edit')}
+                onClick={() => navigate('/profile')}
               >
                 Update Profile
               </Button>

@@ -27,8 +27,8 @@ export const authService = {
   },
 
   // Reset password
-  resetPassword: (token, password) => {
-    return api.post('/auth/reset-password', { token, password });
+  resetPassword: (token, newPassword) => {
+    return api.post('/auth/reset-password', { token, newPassword });
   },
 
   // Logout
@@ -50,7 +50,12 @@ export const authService = {
 };
 
 export const profileService = {
-  // Get user profile
+  // Get my own profile
+  getMyProfile: () => {
+    return api.get('/profiles/me');
+  },
+
+  // Get user profile by ID (public view)
   getProfile: (userId) => {
     return api.get(`/profiles/${userId}`);
   },
@@ -60,21 +65,21 @@ export const profileService = {
     return api.put('/profiles/me', data);
   },
 
-  // Upload profile photo
+  // Upload profile photo — matches backend: POST /profiles/me/photos
   uploadPhoto: (formData) => {
-    return api.post('/profiles/upload-photo', formData, {
+    return api.post('/profiles/me/photos', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 
-  // Delete photo
+  // Delete photo — matches backend: DELETE /profiles/me/photos/:photoId
   deletePhoto: (photoId) => {
-    return api.delete(`/profiles/photo/${photoId}`);
+    return api.delete(`/profiles/me/photos/${photoId}`);
   },
 
-  // Get all photos
+  // Get all my photos — matches backend: GET /profiles/me/photos
   getPhotos: () => {
-    return api.get('/profiles/photos');
+    return api.get('/profiles/me/photos');
   },
 };
 
@@ -128,6 +133,11 @@ export const chatService = {
     return api.get('/chat/conversations');
   },
 
+  // Start or reuse a conversation with a mutual match
+  startConversation: (userId) => {
+    return api.post(`/chat/conversations/with/${userId}`);
+  },
+
   // Get conversation messages
   getMessages: (conversationId, page = 1) => {
     return api.get(`/chat/conversations/${conversationId}/messages`, {
@@ -170,5 +180,27 @@ export const notificationService = {
   // Delete notification
   deleteNotification: (notificationId) => {
     return api.delete(`/notifications/${notificationId}`);
+  },
+};
+
+export const kundaliService = {
+  // Get my kundali
+  getKundali: () => {
+    return api.get('/kundali');
+  },
+
+  // Generate kundali preview or save generated kundali
+  generateKundali: (data) => {
+    return api.post('/kundali/generate', data);
+  },
+
+  // Update my kundali
+  updateKundali: (data) => {
+    return api.put('/kundali', data);
+  },
+
+  // Get compatibility with another user
+  getCompatibility: (userId) => {
+    return api.get(`/kundali/compatibility/${userId}`);
   },
 };

@@ -106,6 +106,38 @@ export const validateUpdateProfile = [
     .optional()
     .trim()
     .isMobilePhone().withMessage('Enter a valid phone number'),
+  body('latitude')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === '' || value === null) return true;
+      const lat = Number(value);
+      if (Number.isNaN(lat) || lat < -90 || lat > 90) {
+        throw new Error('Latitude must be between -90 and 90');
+      }
+      return true;
+    }),
+  body('longitude')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === '' || value === null) return true;
+      const lng = Number(value);
+      if (Number.isNaN(lng) || lng < -180 || lng > 180) {
+        throw new Error('Longitude must be between -180 and 180');
+      }
+      return true;
+    }),
+  body('district')
+    .optional()
+    .trim()
+    .isLength({ max: 100 }).withMessage('District must be 100 characters or less'),
+  body('region')
+    .optional()
+    .trim()
+    .isLength({ max: 100 }).withMessage('Region must be 100 characters or less'),
+  body('country')
+    .optional()
+    .trim()
+    .isLength({ max: 100 }).withMessage('Country must be 100 characters or less'),
 ];
 
 // ─── Message Validators ───────────────────────────────────────────────────────

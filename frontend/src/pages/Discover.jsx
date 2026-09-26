@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MainLayout from '../components/Layout/MainLayout';
 import { useDiscoveryStore } from '../context/store';
-import { discoveryService } from '../services';
+import { discoveryService, matchService, kundaliService } from '../services';
 import Button from '../components/Button/Button';
 import Loading from '../components/Common/Loading';
 
@@ -10,10 +10,11 @@ const Discover = () => {
   const { profiles, currentProfileIndex, setProfiles, setCurrentIndex, isLoading, setLoading } = useDiscoveryStore();
   const [filters, setFilters] = useState({ ageMin: 18, ageMax: 60, gender: '' });
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
+  const [compatibilityScores, setCompatibilityScores] = useState({});
 
   useEffect(() => {
     loadProfiles();
-  }, [filters]);
+  }, []);
 
   const loadProfiles = async () => {
     setLoading(true);
@@ -31,11 +32,30 @@ const Discover = () => {
 
   const currentProfile = profiles[currentProfileIndex];
 
+  useEffect(() => {
+    if (currentProfile && !compatibilityScores[currentProfile.id]) {
+      kundaliService.getCompatibility(currentProfile.id)
+        .then(res => {
+          if (res.data.compatibility) {
+            setCompatibilityScores(prev => ({
+              ...prev,
+              [currentProfile.id]: res.data.compatibility
+            }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentProfile]);
+
   const handleLike = async () => {
     if (!currentProfile) return;
     try {
-      // Call API to like the profile
-      setCurrentIndex(currentProfileIndex + 1);
+      await matchService.likeProfile(currentProfile.id);
+      if (currentProfileIndex < profiles.length - 1) {
+        setCurrentIndex(currentProfileIndex + 1);
+      } else {
+        setNoMoreProfiles(true);
+      }
     } catch (error) {
       console.error('Error liking profile:', error);
     }
@@ -67,7 +87,7 @@ const Discover = () => {
             
             {/* Filters */}
             <div className="bg-white rounded-lg shadow p-6 mb-8">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Min Age
@@ -107,6 +127,30 @@ const Discover = () => {
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Max Distance</label>
+                  <select
+                    value={filters.maxDistance || ''}
+                    onChange={(e) => setFilters({ ...filters, maxDistance: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Anywhere</option>
+                    <option value="10">Within 10 km</option>
+                    <option value="25">Within 25 km</option>
+                    <option value="50">Within 50 km</option>
+                    <option value="100">Within 100 km</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                  <input
+                    type="text"
+                    value={filters.city || ''}
+                    onChange={(e) => setFilters({ ...filters, city: e.target.value })}
+                    placeholder="Any city"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
                 <div className="flex items-end">
                   <Button variant="primary" fullWidth onClick={loadProfiles}>
@@ -166,6 +210,21 @@ const Discover = () => {
                   <p className="text-gray-600 mb-4">
                     {currentProfile.city || 'Location not specified'}
                   </p>
+                  
+                  {/* Location & Compatibility */}
+                  <div className="flex flex-wrap gap-3 mb-4">
+                    {currentProfile.profile?.district && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-50 text-blue-700">
+                        📍 {currentProfile.profile.district}{currentProfile.profile.region ? `, ${currentProfile.profile.region}` : ''}
+                      </span>
+                    )}
+                    {compatibilityScores[currentProfile.id] && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-50 text-purple-700">
+                        ✨ Kundali: {compatibilityScores[currentProfile.id].score}% — {compatibilityScores[currentProfile.id].level}
+                      </span>
+                    )}
+                  </div>
+                  
                   <p className="text-gray-700 mb-6">{currentProfile.bio || 'No bio provided'}</p>
 
                   {/* Actions */}

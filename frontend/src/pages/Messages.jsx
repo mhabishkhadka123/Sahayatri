@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import MainLayout from '../components/Layout/MainLayout';
-import { useChatStore } from '../context/store';
-import { chatService } from '../services';
+import { useAuthStore, useChatStore } from '../context/store';
+import { chatService, matchService } from '../services';
 import Button from '../components/Button/Button';
 import Input from '../components/Input/Input';
 import Loading from '../components/Common/Loading';
 
 const Messages = () => {
-  const { conversations, currentConversation, messages, setConversations, setCurrentConversation, setMessages, addMessage } = useChatStore();
+  const { user } = useAuthStore();
+  const { conversations, currentConversation, messages, setConversations, setCurrentConversation, setMessages, addMessage, addConversation } = useChatStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [matchedUsers, setMatchedUsers] = useState([]);
+  const [startingConversationWith, setStartingConversationWith] = useState(null);
+  const [conversationError, setConversationError] = useState('');
   const [messageText, setMessageText] = useState('');
   const messagesEndRef = useRef(null);
 
@@ -31,15 +35,43 @@ const Messages = () => {
   const loadConversations = async () => {
     setIsLoading(true);
     try {
-      const response = await chatService.getConversations();
-      setConversations(response.data.conversations || []);
-      if (response.data.conversations?.length > 0) {
-        setCurrentConversation(response.data.conversations[0]);
+      const [conversationResponse, matchResponse] = await Promise.all([
+        chatService.getConversations(),
+        matchService.getMatches(),
+      ]);
+      const loadedConversations = conversationResponse.data.conversations || [];
+      const matches = matchResponse.data.matches || [];
+      const usersWithMatches = matches
+        .map((match) => match.userOneId === user?.id ? match.userTwo : match.userOne)
+        .filter(Boolean);
+      const conversationUserIds = new Set(loadedConversations.map((conversation) => conversation.otherUser?.id));
+
+      setConversations(loadedConversations);
+      setMatchedUsers(usersWithMatches.filter((matchedUser) => !conversationUserIds.has(matchedUser.id)));
+      if (loadedConversations.length > 0) {
+        setCurrentConversation(loadedConversations[0]);
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleStartConversation = async (matchedUser) => {
+    setStartingConversationWith(matchedUser.id);
+    setConversationError('');
+    try {
+      const response = await chatService.startConversation(matchedUser.id);
+      const conversation = response.data.conversation;
+      addConversation(conversation);
+      setMatchedUsers((currentMatches) => currentMatches.filter((userItem) => userItem.id !== matchedUser.id));
+      setCurrentConversation(conversation);
+    } catch (error) {
+      console.error('Error starting conversation:', error);
+      setConversationError(error.response?.data?.error || 'Unable to open this conversation. Please try again.');
+    } finally {
+      setStartingConversationWith(null);
     }
   };
 
@@ -89,38 +121,73 @@ const Messages = () => {
         >
           <div className="p-4 border-b">
             <h2 className="text-2xl font-bold text-gray-900">Messages</h2>
+            {conversationError && (
+              <p className="mt-2 text-sm text-red-600">{conversationError}</p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {conversations.length === 0 ? (
+            {conversations.length === 0 && matchedUsers.length === 0 ? (
               <div className="p-4 text-center text-gray-500">No conversations yet</div>
             ) : (
-              conversations.map((conversation) => (
-                <motion.button
-                  key={conversation.id}
-                  onClick={() => setCurrentConversation(conversation)}
-                  whileHover={{ scale: 1.02 }}
-                  className={`w-full p-4 text-left border-b transition-colors ${
-                    currentConversation?.id === conversation.id
-                      ? 'bg-blue-50'
-                      : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold">
-                      {conversation.otherUser.firstName[0]}
+              <>
+                {conversations.map((conversation) => (
+                  <motion.button
+                    key={conversation.id}
+                    onClick={() => setCurrentConversation(conversation)}
+                    whileHover={{ scale: 1.02 }}
+                    className={`w-full p-4 text-left border-b transition-colors ${
+                      currentConversation?.id === conversation.id
+                        ? 'bg-blue-50'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold">
+                        {conversation.otherUser?.firstName?.[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 truncate">
+                          {conversation.otherUser?.firstName} {conversation.otherUser?.lastName}
+                        </h3>
+                        <p className="text-sm text-gray-600 truncate">
+                          {conversation.lastMessage?.content || 'No messages yet'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">
-                        {conversation.otherUser.firstName} {conversation.otherUser.lastName}
-                      </h3>
-                      <p className="text-sm text-gray-600 truncate">
-                        {conversation.lastMessage?.content || 'No messages yet'}
-                      </p>
+                  </motion.button>
+                ))}
+                {matchedUsers.length > 0 && (
+                  <>
+                    <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 bg-gray-50">
+                      Your matches
                     </div>
-                  </div>
-                </motion.button>
-              ))
+                    {matchedUsers.map((matchedUser) => (
+                      <motion.button
+                        key={matchedUser.id}
+                        onClick={() => handleStartConversation(matchedUser)}
+                        disabled={startingConversationWith === matchedUser.id}
+                        whileHover={{ scale: 1.02 }}
+                        className="w-full p-4 text-left border-b hover:bg-blue-50 transition-colors disabled:opacity-60"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold">
+                            {matchedUser.firstName?.[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {matchedUser.firstName} {matchedUser.lastName}
+                            </h3>
+                            <p className="text-sm text-blue-600 truncate">
+                              {startingConversationWith === matchedUser.id ? 'Opening chat...' : 'Start messaging'}
+                            </p>
+                          </div>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </>
+                )}
+              </>
             )}
           </div>
         </motion.div>
