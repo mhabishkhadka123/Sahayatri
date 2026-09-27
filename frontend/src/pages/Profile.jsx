@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import MainLayout from '../components/Layout/MainLayout';
 import { useAuthStore } from '../context/store';
 import { profileService, kundaliService } from '../services';
-import api from '../services/api';
+import api, { API_BASE_URL } from '../services/api';
 import Button from '../components/Button/Button';
 import Input from '../components/Input/Input';
 import Loading from '../components/Common/Loading';
@@ -375,10 +375,8 @@ const Profile = () => {
   const resolvePhotoUrl = (url) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
-    // Use VITE_API_URL if provided, otherwise default to localhost:5000
-    const rawBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     // normalize base so it does not end with /api
-    let base = rawBase;
+    let base = API_BASE_URL;
     if (base.endsWith('/api')) base = base.slice(0, -4);
     if (base.endsWith('/')) base = base.slice(0, -1);
     // ensure url begins with '/'
