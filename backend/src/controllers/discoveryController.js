@@ -16,12 +16,14 @@ export const browseProfiles = async (req, res) => {
     const minBirthDate = new Date(today.getFullYear() - parseInt(ageMax) - 1, today.getMonth(), today.getDate() + 1);
 
     const where = {
-      NOT: { id: req.userId },
+      id: { not: req.userId },
       isActive: true,
       dateOfBirth: {
         gte: minBirthDate,
         lte: maxBirthDate,
       },
+      receivedLikes: { none: { likedById: req.userId } },
+      receivedSkips: { none: { skippedById: req.userId } },
     };
 
     if (gender) {
@@ -46,11 +48,11 @@ export const browseProfiles = async (req, res) => {
       const userLat = currentUser?.profile?.latitude;
       const userLon = currentUser?.profile?.longitude;
       
-      if (userLat && userLon) {
+      if (userLat != null && userLon != null) {
         profiles = profiles.filter(p => {
           const pLat = p.profile?.latitude;
           const pLon = p.profile?.longitude;
-          if (!pLat || !pLon) return false;
+          if (pLat == null || pLon == null) return false;
           
           const R = 6371; // km
           const dLat = (pLat - userLat) * Math.PI / 180;

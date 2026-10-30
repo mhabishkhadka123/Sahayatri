@@ -11,6 +11,8 @@ const Discover = () => {
   const [filters, setFilters] = useState({ ageMin: 18, ageMax: 60, gender: '' });
   const [noMoreProfiles, setNoMoreProfiles] = useState(false);
   const [compatibilityScores, setCompatibilityScores] = useState({});
+  const [actionError, setActionError] = useState('');
+  const [isActing, setIsActing] = useState(false);
 
   useEffect(() => {
     loadProfiles();
@@ -18,10 +20,14 @@ const Discover = () => {
 
   const loadProfiles = async () => {
     setLoading(true);
+    setNoMoreProfiles(false);
+    setCurrentIndex(0);
+    setActionError('');
     try {
       const response = await discoveryService.browseProfiles(filters);
-      setProfiles(response.data.profiles || []);
-      setNoMoreProfiles(response.data.profiles.length === 0);
+      const fetchedProfiles = response.data.profiles || [];
+      setProfiles(fetchedProfiles);
+      setNoMoreProfiles(fetchedProfiles.length === 0);
     } catch (error) {
       console.error('Error loading profiles:', error);
       setNoMoreProfiles(true);
@@ -48,24 +54,43 @@ const Discover = () => {
   }, [currentProfile]);
 
   const handleLike = async () => {
-    if (!currentProfile) return;
+    if (!currentProfile || isActing) return;
+    setIsActing(true);
+    setActionError('');
     try {
       await matchService.likeProfile(currentProfile.id);
-      if (currentProfileIndex < profiles.length - 1) {
-        setCurrentIndex(currentProfileIndex + 1);
-      } else {
-        setNoMoreProfiles(true);
-      }
+      advancePastProfile(currentProfile.id);
     } catch (error) {
-      console.error('Error liking profile:', error);
+      const message = error.response?.data?.error || 'Unable to like this profile. Please try again.';
+      if (error.response?.status === 400 && message === 'Already liked this profile') {
+        advancePastProfile(currentProfile.id);
+      } else {
+        setActionError(message);
+      }
+    } finally {
+      setIsActing(false);
     }
   };
 
-  const handleSkip = () => {
-    if (currentProfileIndex < profiles.length - 1) {
-      setCurrentIndex(currentProfileIndex + 1);
-    } else {
-      setNoMoreProfiles(true);
+  const advancePastProfile = (profileId) => {
+    const remainingProfiles = profiles.filter((profile) => profile.id !== profileId);
+    setProfiles(remainingProfiles);
+    setCurrentIndex(Math.min(currentProfileIndex, Math.max(remainingProfiles.length - 1, 0)));
+    setNoMoreProfiles(remainingProfiles.length === 0);
+    setActionError('');
+  };
+
+  const handleSkip = async () => {
+    if (!currentProfile || isActing) return;
+    setIsActing(true);
+    setActionError('');
+    try {
+      await matchService.skipProfile(currentProfile.id);
+      advancePastProfile(currentProfile.id);
+    } catch (error) {
+      setActionError(error.response?.data?.error || 'Unable to pass this profile. Please try again.');
+    } finally {
+      setIsActing(false);
     }
   };
 
@@ -233,6 +258,7 @@ const Discover = () => {
                       variant="ghost"
                       fullWidth
                       onClick={handleSkip}
+                      disabled={isActing}
                       className="text-gray-600 border-gray-300"
                     >
                       Pass
@@ -241,10 +267,16 @@ const Discover = () => {
                       variant="primary"
                       fullWidth
                       onClick={handleLike}
+                      disabled={isActing}
                     >
-                      ❤️ Like
+                      {isActing ? 'Please wait...' : '❤️ Like'}
                     </Button>
                   </div>
+                  {actionError && (
+                    <p className="mt-3 text-sm text-red-600" role="alert">
+                      {actionError}
+                    </p>
+                  )}
                 </div>
               </motion.div>
             </AnimatePresence>

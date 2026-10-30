@@ -21,60 +21,49 @@ export const likeProfile = async (req, res) => {
       return res.status(400).json({ error: 'Cannot like your own profile' });
     }
 
-    const existingLike = await prisma.like.findUnique({
-      where: {
-        likedById_likedByOtherId: {
+    const likedUser = await prisma.user.findUnique({
+      where: { id: likedUserId },
+      select: { id: true, isActive: true },
+    });
+    if (!likedUser || !likedUser.isActive) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const result = await prisma.$transaction(async (transaction) => {
+      await transaction.like.create({
+        data: {
           likedById: req.userId,
           likedByOtherId: likedUserId,
         },
-      },
-    });
+      });
 
-    if (existingLike) {
-      return res.status(400).json({ error: 'Already liked this profile' });
-    }
-
-    await prisma.like.create({
-      data: {
-        likedById: req.userId,
-        likedByOtherId: likedUserId,
-      },
-    });
-
-    // Check for mutual like
-    const mutualLike = await prisma.like.findUnique({
-      where: {
-        likedById_likedByOtherId: {
-          likedById: likedUserId,
-          likedByOtherId: req.userId,
-        },
-      },
-    });
-
-    if (mutualLike) {
-      // Create match
-      const existingMatch = await prisma.match.findUnique({
+      const mutualLike = await transaction.like.findUnique({
         where: {
-          userOneId_userTwoId: {
-            userOneId: req.userId < likedUserId ? req.userId : likedUserId,
-            userTwoId: req.userId < likedUserId ? likedUserId : req.userId,
+          likedById_likedByOtherId: {
+            likedById: likedUserId,
+            likedByOtherId: req.userId,
           },
         },
       });
 
-      if (!existingMatch) {
-        await prisma.match.create({
-          data: {
-            userOneId: req.userId < likedUserId ? req.userId : likedUserId,
-            userTwoId: req.userId < likedUserId ? likedUserId : req.userId,
-            status: 'matched',
-          },
-        });
-      }
-    }
+      if (!mutualLike) return { matched: false };
 
-    res.json({ message: 'Profile liked' });
+      const userOneId = req.userId < likedUserId ? req.userId : likedUserId;
+      const userTwoId = req.userId < likedUserId ? likedUserId : req.userId;
+      await transaction.match.upsert({
+        where: { userOneId_userTwoId: { userOneId, userTwoId } },
+        create: { userOneId, userTwoId, status: 'matched' },
+        update: { status: 'matched' },
+      });
+
+      return { matched: true };
+    });
+
+    return res.json({ message: 'Profile liked', ...result });
   } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'Already liked this profile' });
+    }
     console.error('Like profile error:', error);
     res.status(500).json({ error: 'Failed to like profile' });
   }
@@ -83,10 +72,34 @@ export const likeProfile = async (req, res) => {
 export const skipProfile = async (req, res) => {
   try {
     const { userId: skippedUserId } = req.params;
-    // Just track the skip without creating anything
-    res.json({ message: 'Profile skipped' });
+
+    if (req.userId === skippedUserId) {
+      return res.status(400).json({ error: 'Cannot pass your own profile' });
+    }
+
+    const skippedUser = await prisma.user.findUnique({
+      where: { id: skippedUserId },
+      select: { id: true, isActive: true },
+    });
+    if (!skippedUser || !skippedUser.isActive) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    await prisma.profileSkip.upsert({
+      where: {
+        skippedById_skippedUserId: {
+          skippedById: req.userId,
+          skippedUserId,
+        },
+      },
+      create: { skippedById: req.userId, skippedUserId },
+      update: {},
+    });
+
+    return res.json({ message: 'Profile passed' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to skip profile' });
+    console.error('Skip profile error:', error);
+    return res.status(500).json({ error: 'Failed to pass profile' });
   }
 };
 

@@ -50,6 +50,8 @@ model User {
   // Likes
   sentLikes     Like[] @relation("LikedBy")
   receivedLikes Like[] @relation("LikedByOther")
+  sentSkips     ProfileSkip[] @relation("SkipBy")
+  receivedSkips ProfileSkip[] @relation("SkippedUser")
 
   // Matches
   initiatedMatches Match[] @relation("UserOne")
@@ -176,6 +178,17 @@ model Like {
   createdAt      DateTime @default(now())
 
   @@unique([likedById, likedByOtherId])
+}
+
+model ProfileSkip {
+  id            String   @id @default(cuid())
+  skippedById   String
+  skippedBy     User     @relation("SkipBy", fields: [skippedById], references: [id], onDelete: Cascade)
+  skippedUserId String
+  skippedUser   User     @relation("SkippedUser", fields: [skippedUserId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@unique([skippedById, skippedUserId])
 }
 
 // ─────────────────────────────────────────────

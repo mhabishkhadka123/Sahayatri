@@ -14,6 +14,7 @@ import matchRoutes from './routes/matches.js';
 import chatRoutes from './routes/chat.js';
 import notificationRoutes from './routes/notifications.js';
 import kundaliRoutes from './routes/kundali.js';
+import { registerChatSocket } from './socket/chatSocket.js';
 
 dotenv.config();
 
@@ -57,26 +58,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/kundali', kundaliRoutes);
 
-// Socket.io events
-io.on('connection', (socket) => {
-  console.log('New user connected:', socket.id);
-
-  socket.on('join_conversation', (data) => {
-    socket.join(data.conversationId);
-  });
-
-  socket.on('leave_conversation', (data) => {
-    socket.leave(data.conversationId);
-  });
-
-  socket.on('send_message', (data) => {
-    io.to(data.conversationId).emit('receive_message', data);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
-});
+registerChatSocket(io, prisma);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

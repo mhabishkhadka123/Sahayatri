@@ -3,29 +3,27 @@ import { motion, AnimatePresence } from 'framer-motion';
 import MainLayout from '../components/Layout/MainLayout';
 import { useAuthStore, useChatStore } from '../context/store';
 import { chatService, matchService } from '../services';
+import { useChat } from '../hooks/useChat';
+import VideoCall from '../components/VideoCall/VideoCall';
 import Button from '../components/Button/Button';
 import Input from '../components/Input/Input';
 import Loading from '../components/Common/Loading';
 
 const Messages = () => {
   const { user } = useAuthStore();
-  const { conversations, currentConversation, messages, setConversations, setCurrentConversation, setMessages, addMessage, addConversation } = useChatStore();
+  const { conversations, currentConversation, setConversations, setCurrentConversation, addConversation } = useChatStore();
+  const { messages, isLoading: isLoadingMessages, isConnected, isReady, error: chatError, sendMessage } = useChat(currentConversation?.id);
   const [isLoading, setIsLoading] = useState(false);
   const [matchedUsers, setMatchedUsers] = useState([]);
   const [startingConversationWith, setStartingConversationWith] = useState(null);
   const [conversationError, setConversationError] = useState('');
   const [messageText, setMessageText] = useState('');
+  const [messageError, setMessageError] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     loadConversations();
   }, []);
-
-  useEffect(() => {
-    if (currentConversation) {
-      loadMessages();
-    }
-  }, [currentConversation]);
 
   useEffect(() => {
     // Scroll to bottom when new messages arrive
@@ -75,34 +73,16 @@ const Messages = () => {
     }
   };
 
-  const loadMessages = async () => {
-    if (!currentConversation) return;
-    try {
-      const response = await chatService.getMessages(currentConversation.id);
-      setMessages(response.data.messages || []);
-    } catch (error) {
-      console.error('Error loading messages:', error);
-    }
-  };
-
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageText.trim() || !currentConversation) return;
 
-    const tempMessage = {
-      id: Date.now(),
-      content: messageText,
-      createdAt: new Date().toISOString(),
-      sender: { firstName: 'You' },
-    };
-
-    addMessage(tempMessage);
-    setMessageText('');
-
     try {
-      await chatService.sendMessage(currentConversation.id, messageText);
+      setMessageError('');
+      await sendMessage(messageText);
+      setMessageText('');
     } catch (error) {
-      console.error('Error sending message:', error);
+      setMessageError(error.message || 'Unable to send message');
     }
   };
 
@@ -205,10 +185,16 @@ const Messages = () => {
                 <h2 className="text-xl font-bold text-gray-900">
                   {currentConversation.otherUser.firstName} {currentConversation.otherUser.lastName}
                 </h2>
+                <p className="text-xs text-gray-500">{isConnected ? 'Connected' : 'Connecting...'}</p>
+                {chatError && <p className="mt-1 text-sm text-red-600" role="alert">{chatError}</p>}
               </div>
+              <VideoCall remoteUser={currentConversation.otherUser} />
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
+                {isLoadingMessages && messages.length === 0 && (
+                  <p className="text-center text-gray-500">Loading messages...</p>
+                )}
                 <AnimatePresence>
                   {messages.map((msg, index) => (
                     <motion.div
@@ -242,10 +228,11 @@ const Messages = () => {
                   placeholder="Type a message..."
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <Button type="submit" variant="primary">
+                <Button type="submit" variant="primary" disabled={!isReady || !messageText.trim()}>
                   Send
                 </Button>
               </form>
+              {messageError && <p className="bg-white px-4 pb-3 text-sm text-red-600" role="alert">{messageError}</p>}
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">

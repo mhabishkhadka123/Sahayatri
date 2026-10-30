@@ -22,50 +22,116 @@ export const getZodiacElement = (sign) => {
   return null;
 };
 
-const calculateZodiacScore = (signA, signB) => {
-  if (!signA || !signB) return { score: 0, maxScore: 25, details: 'Missing sign data' };
-  if (signA === signB) return { score: 25, maxScore: 25, details: 'Same sign' };
-  
-  const elemA = getZodiacElement(signA);
-  const elemB = getZodiacElement(signB);
-  
-  if (elemA === elemB) return { score: 25, maxScore: 25, details: 'Same element' };
-  
-  if ((elemA === 'Fire' && elemB === 'Air') || (elemA === 'Air' && elemB === 'Fire') ||
-      (elemA === 'Earth' && elemB === 'Water') || (elemA === 'Water' && elemB === 'Earth')) {
-    return { score: 20, maxScore: 25, details: 'Compatible elements' };
-  }
-  
-  if ((elemA === 'Fire' && elemB === 'Water') || (elemA === 'Water' && elemB === 'Fire') ||
-      (elemA === 'Earth' && elemB === 'Air') || (elemA === 'Air' && elemB === 'Earth')) {
-    return { score: 5, maxScore: 25, details: 'Challenging elements' };
-  }
-  
-  return { score: 12, maxScore: 25, details: 'Neutral elements' };
+const VARNA_BY_SIGN = {
+  Mesha: 'Kshatriya', Vrishabha: 'Vaishya', Mithuna: 'Shudra', Karka: 'Brahmin',
+  Simha: 'Kshatriya', Kanya: 'Vaishya', Tula: 'Shudra', Vrishchika: 'Brahmin',
+  Dhanu: 'Kshatriya', Makara: 'Vaishya', Kumbha: 'Shudra', Meena: 'Brahmin',
+};
+const VARNA_RANK = { Shudra: 1, Vaishya: 2, Kshatriya: 3, Brahmin: 4 };
+const SIGN_LORDS = {
+  Mesha: 'Mars', Vrishabha: 'Venus', Mithuna: 'Mercury', Karka: 'Moon',
+  Simha: 'Sun', Kanya: 'Mercury', Tula: 'Venus', Vrishchika: 'Mars',
+  Dhanu: 'Jupiter', Makara: 'Saturn', Kumbha: 'Saturn', Meena: 'Jupiter',
+};
+const PLANET_FRIENDS = {
+  Sun: ['Moon', 'Mars', 'Jupiter'],
+  Moon: ['Sun', 'Mercury'],
+  Mars: ['Sun', 'Moon', 'Jupiter'],
+  Mercury: ['Sun', 'Venus'],
+  Jupiter: ['Sun', 'Moon', 'Mars'],
+  Venus: ['Mercury', 'Saturn'],
+  Saturn: ['Mercury', 'Venus'],
+};
+const PLANET_ENEMIES = {
+  Sun: ['Venus', 'Saturn'],
+  Moon: [],
+  Mars: ['Mercury'],
+  Mercury: ['Moon'],
+  Jupiter: ['Mercury', 'Venus'],
+  Venus: ['Sun', 'Moon'],
+  Saturn: ['Sun', 'Moon', 'Mars'],
+};
+const NAKSHATRA_GANAS = [
+  'Deva', 'Manushya', 'Rakshasa', 'Manushya', 'Deva', 'Manushya', 'Deva', 'Deva', 'Rakshasa',
+  'Rakshasa', 'Manushya', 'Manushya', 'Deva', 'Rakshasa', 'Deva', 'Rakshasa', 'Deva',
+  'Rakshasa', 'Rakshasa', 'Manushya', 'Manushya', 'Deva', 'Rakshasa', 'Rakshasa',
+  'Manushya', 'Manushya', 'Deva',
+];
+const NAKSHATRA_YONIS = [
+  'Horse', 'Elephant', 'Sheep', 'Serpent', 'Serpent', 'Dog', 'Cat', 'Sheep', 'Cat',
+  'Rat', 'Rat', 'Cow', 'Buffalo', 'Tiger', 'Buffalo', 'Tiger', 'Deer', 'Deer',
+  'Dog', 'Monkey', 'Mongoose', 'Monkey', 'Lion', 'Horse', 'Lion', 'Cow', 'Elephant',
+];
+const NAKSHATRA_NADIS = NAKSHATRAS.map((_, index) => ['Adi', 'Madhya', 'Antya'][index % 3]);
+const ENEMY_YONIS = [
+  ['Horse', 'Buffalo'], ['Elephant', 'Lion'], ['Sheep', 'Monkey'], ['Serpent', 'Mongoose'],
+  ['Dog', 'Deer'], ['Cat', 'Rat'], ['Cow', 'Tiger'],
+];
+const VASHYA_GROUPS = {
+  Mesha: ['Quadruped'], Vrishabha: ['Quadruped'], Mithuna: ['Human'], Karka: ['Water'],
+  Simha: ['Wild'], Kanya: ['Human'], Tula: ['Human'], Vrishchika: ['Insect'],
+  Dhanu: ['Human', 'Quadruped'], Makara: ['Quadruped', 'Water'], Kumbha: ['Human'], Meena: ['Water'],
+};
+const VASHYA_COMPATIBLE = [
+  ['Human', 'Quadruped'], ['Human', 'Water'], ['Quadruped', 'Water'], ['Wild', 'Quadruped'],
+  ['Insect', 'Water'],
+];
+const GANA_SCORES = {
+  Deva: { Deva: 6, Manushya: 5, Rakshasa: 1 },
+  Manushya: { Deva: 5, Manushya: 6, Rakshasa: 0 },
+  Rakshasa: { Deva: 1, Manushya: 0, Rakshasa: 6 },
 };
 
-const getNakshatraGroup = (nakshatra) => {
-  const index = NAKSHATRAS.indexOf(nakshatra);
-  if (index === -1) return -1;
-  if (index <= 6) return 0;
-  if (index <= 13) return 1;
-  if (index <= 20) return 2;
+const isValidSign = (sign) => ZODIAC_SIGNS.includes(sign);
+const isValidNakshatra = (nakshatra) => NAKSHATRAS.includes(nakshatra);
+
+const relationBetweenPlanets = (planetA, planetB) => {
+  if (planetA === planetB) return 'friend';
+  if (PLANET_FRIENDS[planetA].includes(planetB)) return 'friend';
+  if (PLANET_ENEMIES[planetA].includes(planetB)) return 'enemy';
+  return 'neutral';
+};
+
+const getGrahaMaitriScore = (signA, signB) => {
+  const lordA = SIGN_LORDS[signA];
+  const lordB = SIGN_LORDS[signB];
+  const relationA = relationBetweenPlanets(lordA, lordB);
+  const relationB = relationBetweenPlanets(lordB, lordA);
+  const points = { friend: 2, neutral: 1, enemy: 0 };
+  const score = points[relationA] + points[relationB];
+  if (relationA === 'friend' && relationB === 'friend') return 5;
+  if (relationA === 'enemy' && relationB === 'enemy') return 0;
+  if (relationA === 'friend' || relationB === 'friend') return score === 3 ? 4 : 1;
+  if (relationA === 'enemy' || relationB === 'enemy') return 0.5;
   return 3;
 };
 
-const calculateNakshatraScore = (nakA, nakB) => {
-  if (!nakA || !nakB) return { score: 0, maxScore: 30, details: 'Missing nakshatra data' };
-  if (nakA === nakB) return { score: 30, maxScore: 30, details: 'Same nakshatra' };
-  
-  const groupA = getNakshatraGroup(nakA);
-  const groupB = getNakshatraGroup(nakB);
-  
-  if (groupA === -1 || groupB === -1) return { score: 0, maxScore: 30, details: 'Invalid nakshatra' };
-  if (groupA === groupB) return { score: 30, maxScore: 30, details: 'Same group' };
-  if (Math.abs(groupA - groupB) === 1 || Math.abs(groupA - groupB) === 3) return { score: 22, maxScore: 30, details: 'Adjacent groups' };
-  if (Math.abs(groupA - groupB) === 2) return { score: 15, maxScore: 30, details: 'Moderate groups' };
-  
-  return { score: 8, maxScore: 30, details: 'Different groups' };
+const scoreFactor = (score, maxScore, details) => ({
+  score,
+  maxScore,
+  details,
+});
+
+const getElementalBalance = (signA, signB) => {
+  const elementA = getZodiacElement(signA);
+  const elementB = getZodiacElement(signB);
+  if (!elementA || !elementB) {
+    return { score: null, details: 'Rashi element is unavailable' };
+  }
+  if (elementA === elementB) return { score: 100, details: 'Same element' };
+  if (
+    (elementA === 'Fire' && elementB === 'Air') || (elementA === 'Air' && elementB === 'Fire') ||
+    (elementA === 'Earth' && elementB === 'Water') || (elementA === 'Water' && elementB === 'Earth')
+  ) {
+    return { score: 80, details: 'Traditionally complementary elements' };
+  }
+  if (
+    (elementA === 'Fire' && elementB === 'Water') || (elementA === 'Water' && elementB === 'Fire') ||
+    (elementA === 'Earth' && elementB === 'Air') || (elementA === 'Air' && elementB === 'Earth')
+  ) {
+    return { score: 25, details: 'Traditionally challenging elements' };
+  }
+  return { score: 60, details: 'Neutral elemental pairing' };
 };
 
 import moonposition from 'astronomia/moonposition';
@@ -159,38 +225,111 @@ export const generateKundali = ({ dateOfBirth, birthTime, latitude, longitude, t
   };
 };
 
-export const calculateCompatibility = (kundaliA, kundaliB) => {
-  const zodiac = calculateZodiacScore(kundaliA.zodiacSign, kundaliB.zodiacSign);
-  const moonSign = calculateZodiacScore(kundaliA.moonSign, kundaliB.moonSign);
-  const nakshatra = calculateNakshatraScore(kundaliA.nakshatra, kundaliB.nakshatra);
-  
-  let completenessScore = 0;
-  const maxCompleteness = 20;
-  if (kundaliA.zodiacSign && kundaliB.zodiacSign) completenessScore += 5;
-  if (kundaliA.moonSign && kundaliB.moonSign) completenessScore += 5;
-  if (kundaliA.nakshatra && kundaliB.nakshatra) completenessScore += 5;
-  if (kundaliA.birthTime && kundaliB.birthTime) completenessScore += 5;
+export const calculateCompatibility = (kundaliA, kundaliB, genderA, genderB) => {
+  const signA = kundaliA.moonSign || kundaliA.zodiacSign;
+  const signB = kundaliB.moonSign || kundaliB.zodiacSign;
+  const nakshatraA = kundaliA.nakshatra;
+  const nakshatraB = kundaliB.nakshatra;
 
-  const totalScore = zodiac.score + moonSign.score + nakshatra.score + completenessScore;
-  
+  if (!isValidSign(signA) || !isValidSign(signB)) {
+    throw new Error('Valid Moon signs are required to calculate compatibility');
+  }
+  if (!isValidNakshatra(nakshatraA) || !isValidNakshatra(nakshatraB)) {
+    throw new Error('Valid Nakshatras are required to calculate compatibility');
+  }
+
+  const signIndexA = ZODIAC_SIGNS.indexOf(signA);
+  const signIndexB = ZODIAC_SIGNS.indexOf(signB);
+  const nakshatraIndexA = NAKSHATRAS.indexOf(nakshatraA);
+  const nakshatraIndexB = NAKSHATRAS.indexOf(nakshatraB);
+  const genderAValue = (genderA || '').toLowerCase();
+  const genderBValue = (genderB || '').toLowerCase();
+  let varnaScore;
+
+  if (genderAValue === 'male' && genderBValue === 'female') {
+    varnaScore = VARNA_RANK[VARNA_BY_SIGN[signA]] >= VARNA_RANK[VARNA_BY_SIGN[signB]] ? 1 : 0;
+  } else if (genderAValue === 'female' && genderBValue === 'male') {
+    varnaScore = VARNA_RANK[VARNA_BY_SIGN[signB]] >= VARNA_RANK[VARNA_BY_SIGN[signA]] ? 1 : 0;
+  } else {
+    const sameVarna = VARNA_BY_SIGN[signA] === VARNA_BY_SIGN[signB];
+    varnaScore = sameVarna ? 1 : 0.5;
+  }
+
+  const groupsA = VASHYA_GROUPS[signA];
+  const groupsB = VASHYA_GROUPS[signB];
+  const sharesVashyaGroup = groupsA.some((group) => groupsB.includes(group));
+  const vashyaScore = sharesVashyaGroup
+    ? 2
+    : VASHYA_COMPATIBLE.some(([groupA, groupB]) =>
+      (groupsA.includes(groupA) && groupsB.includes(groupB)) ||
+      (groupsA.includes(groupB) && groupsB.includes(groupA))
+    ) ? 1 : 0;
+
+  const taraScoreFrom = (fromIndex, toIndex) => {
+    const tara = ((toIndex - fromIndex + 27) % 27) + 1;
+    return [0, 2, 4, 6, 8].includes(tara % 9) ? 1.5 : 0;
+  };
+  const taraScore = taraScoreFrom(nakshatraIndexA, nakshatraIndexB) +
+    taraScoreFrom(nakshatraIndexB, nakshatraIndexA);
+
+  const yoniA = NAKSHATRA_YONIS[nakshatraIndexA];
+  const yoniB = NAKSHATRA_YONIS[nakshatraIndexB];
+  const areEnemyYonis = ENEMY_YONIS.some(([first, second]) =>
+    (yoniA === first && yoniB === second) || (yoniA === second && yoniB === first)
+  );
+  const yoniScore = yoniA === yoniB ? 4 : areEnemyYonis ? 0 : 2;
+
+  const ganaA = NAKSHATRA_GANAS[nakshatraIndexA];
+  const ganaB = NAKSHATRA_GANAS[nakshatraIndexB];
+  const ganaScore = GANA_SCORES[ganaA][ganaB];
+  const grahaMaitriScore = getGrahaMaitriScore(signA, signB);
+
+  const signDistance = (signIndexB - signIndexA + 12) % 12;
+  const adverseBhakootDistances = [1, 4, 5, 7, 8, 11];
+  const bhakootScore = adverseBhakootDistances.includes(signDistance) ? 0 : 7;
+
+  const nadiA = NAKSHATRA_NADIS[nakshatraIndexA];
+  const nadiB = NAKSHATRA_NADIS[nakshatraIndexB];
+  const nadiScore = nadiA === nadiB ? 0 : 8;
+
+  const factors = {
+    varna: scoreFactor(varnaScore, 1, `${VARNA_BY_SIGN[signA]} and ${VARNA_BY_SIGN[signB]} Varna`),
+    vashya: scoreFactor(vashyaScore, 2, sharesVashyaGroup ? 'Rashi Vashya groups align' : 'Rashi Vashya group comparison'),
+    tara: scoreFactor(taraScore, 3, 'Birth-star distance and mutual Tara balance'),
+    yoni: scoreFactor(yoniScore, 4, areEnemyYonis ? 'Traditionally opposing Yonis' : `${yoniA} and ${yoniB} Yoni`),
+    grahaMaitri: scoreFactor(grahaMaitriScore, 5, `${SIGN_LORDS[signA]} and ${SIGN_LORDS[signB]} planetary friendship`),
+    gana: scoreFactor(ganaScore, 6, `${ganaA} and ${ganaB} Gana`),
+    bhakoot: scoreFactor(bhakootScore, 7, bhakootScore ? 'Favorable Rashi relationship' : 'Traditional 2/12, 5/9, or 6/8 Rashi pairing'),
+    nadi: scoreFactor(nadiScore, 8, nadiScore ? 'Different Nadi' : `Same ${nadiA} Nadi`),
+  };
+  const totalScore = Object.values(factors).reduce((total, factor) => total + factor.score, 0);
+  const score = Math.round((totalScore / 36) * 1000) / 10;
+  const mentalMatchScore = grahaMaitriScore + ganaScore + taraScore;
+  const elementalBalance = getElementalBalance(signA, signB);
+
   let level = 'Low';
-  if (totalScore >= 75) level = 'Excellent';
-  else if (totalScore >= 55) level = 'Good';
-  else if (totalScore >= 35) level = 'Average';
+  if (totalScore >= 28) level = 'Excellent';
+  else if (totalScore >= 18) level = 'Good';
+  else if (totalScore >= 14) level = 'Average';
 
   return {
-    score: totalScore,
+    score,
+    scoreOutOf36: totalScore,
+    maxScore: 36,
     level,
-    factors: {
-      zodiac,
-      moonSign,
-      nakshatra,
-      dataCompleteness: {
-        score: completenessScore,
-        maxScore: maxCompleteness,
-        details: 'Data completeness bonus'
-      }
+    factors,
+    categories: {
+      mentalMatch: {
+        score: Math.round((mentalMatchScore / 14) * 100),
+        maxScore: 100,
+        gunaScore: mentalMatchScore,
+        gunaMaxScore: 14,
+        details: 'Based on Tara, Graha Maitri, and Gana kootas',
+      },
+      elementalBalance,
     },
-    disclaimer: 'Kundali compatibility estimate based on available birth data. Not a scientific guarantee.'
+    rashis: { personA: signA, personB: signB },
+    nakshatras: { personA: nakshatraA, personB: nakshatraB },
+    disclaimer: 'Traditional Ashta Koota estimate for cultural reference only; it is not scientific or a guarantee of relationship compatibility.',
   };
 };

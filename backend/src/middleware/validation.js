@@ -177,6 +177,7 @@ export const validatePagination = [
 
 export const validateUserId = [
   param('userId')
+    .trim()
     .notEmpty().withMessage('User ID is required')
-    .isString().withMessage('Invalid user ID'),
+    .isLength({ max: 128 }).withMessage('User ID is too long'),
 ];

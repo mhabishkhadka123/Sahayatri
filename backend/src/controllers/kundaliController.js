@@ -109,20 +109,82 @@ export const getCompatibility = async (req, res) => {
   try {
     const { userId: otherUserId } = req.params;
 
-    const [myKundali, otherKundali] = await Promise.all([
-      prisma.kundali.findUnique({ where: { userId: req.userId } }),
-      prisma.kundali.findUnique({ where: { userId: otherUserId } }),
-    ]);
-
-    if (!myKundali || !otherKundali) {
-      return res.status(404).json({ success: false, error: 'Kundali data not found' });
+    if (req.userId === otherUserId) {
+      return res.status(400).json({ success: false, error: 'Cannot compare a profile with itself' });
     }
 
-    const compatibility = calculateCompatibility(myKundali, otherKundali);
+    const users = await prisma.user.findMany({
+      where: { id: { in: [req.userId, otherUserId] } },
+      select: {
+        id: true,
+        gender: true,
+        dateOfBirth: true,
+        kundali: {
+          select: {
+            birthTime: true,
+            birthPlace: true,
+            latitude: true,
+            longitude: true,
+            timezone: true,
+            isVisible: true,
+          },
+        },
+      },
+    });
+    const userById = new Map(users.map((user) => [user.id, user]));
+    const currentUser = userById.get(req.userId);
+    const otherUser = userById.get(otherUserId);
+
+    if (!otherUser) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    if (!currentUser?.kundali || !otherUser.kundali) {
+      return res.status(422).json({ success: false, error: 'Birth details are incomplete for compatibility calculation' });
+    }
+    if (otherUser.kundali.isVisible === false) {
+      return res.status(403).json({ success: false, error: 'This user has hidden their Kundali details' });
+    }
+
+    const getBirthChart = (user) => {
+      const { kundali } = user;
+      if (!user.dateOfBirth || !kundali.birthTime || kundali.latitude == null || kundali.longitude == null) {
+        throw new Error('Date of birth, birth time, and birth place coordinates are required');
+      }
+
+      const calculatedChart = generateKundali({
+        dateOfBirth: user.dateOfBirth.toISOString().slice(0, 10),
+        birthTime: kundali.birthTime,
+        latitude: kundali.latitude,
+        longitude: kundali.longitude,
+        timezone: kundali.timezone || 'Asia/Kathmandu',
+      });
+
+      return {
+        ...calculatedChart,
+        birthTime: kundali.birthTime,
+      };
+    };
+
+    let chartA;
+    let chartB;
+    try {
+      chartA = getBirthChart(currentUser);
+      chartB = getBirthChart(otherUser);
+    } catch (error) {
+      return res.status(422).json({ success: false, error: error.message });
+    }
+
+    const compatibility = calculateCompatibility(
+      chartA,
+      chartB,
+      currentUser.gender,
+      otherUser.gender
+    );
 
     return res.status(200).json({ success: true, compatibility });
   } catch (error) {
     console.error('Get compatibility error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: 'Failed to calculate compatibility' });
   }
 };
