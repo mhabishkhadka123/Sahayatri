@@ -1,7 +1,11 @@
 import axios from 'axios';
 
 // Default to backend on localhost in development so requests go to port 5000
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// NEW (dynamic for local + Netlify production)
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
+    : 'http://localhost:5000/api';
 const normalizeApiBase = (base) => {
   if (!base) return '/api';
   if (base.startsWith('http://') || base.startsWith('https://')) {
