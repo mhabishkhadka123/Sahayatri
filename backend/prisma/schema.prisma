@@ -118,6 +118,7 @@ model Kundali {
   id          String   @id @default(cuid())
   userId      String   @unique
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth String?          // <--- Add this field to match your backend query payload
   birthTime   String?          // HH:MM format
   birthPlace  String?          // City/place name
   latitude    Float?           // Birth place latitude
