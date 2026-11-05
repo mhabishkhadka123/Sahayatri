@@ -8,6 +8,7 @@ import Button from '../components/Button/Button';
 import Input from '../components/Input/Input';
 import Loading from '../components/Common/Loading';
 import LocationPicker from '../components/Location/LocationPicker';
+import KundaliPatraView from '../components/KundaliPatraView';
 
 // --- Utilities ---
 const formatDateForInput = (value) => {
@@ -123,7 +124,7 @@ const Profile = () => {
         if (isMounted) {
           const nextKundaliState = buildKundaliState(response.data.kundali, user);
           setKundaliData(nextKundaliState);
-          setSavedKundaliData(nextKundaliState); // FIXED TYPO HERE
+          setSavedKundaliData(nextKundaliState);
           setKundaliPreview(null);
         }
       } catch (error) {
@@ -179,7 +180,7 @@ const Profile = () => {
   };
 
   const handlePhotoUpload = async (e) => {
-    const fileInput = e.target; // SAFELY CAPTURED REFERENCE
+    const fileInput = e.target;
     const file = fileInput.files?.[0];
     if (!file) return;
 
@@ -201,7 +202,7 @@ const Profile = () => {
       });
     } finally {
       setIsLoading(false);
-      fileInput.value = ''; // RESET USING SAFE REFERENCE
+      fileInput.value = '';
     }
   };
 
@@ -214,7 +215,6 @@ const Profile = () => {
       if (profileService.deletePhoto) {
         await profileService.deletePhoto(photoId);
       } else {
-        // Fallback if method name differs in your service
         await profileService.updateProfile({ photoIdToRemove: photoId });
       }
 
@@ -371,20 +371,16 @@ const Profile = () => {
   const canSaveKundali = Boolean(kundaliPreview) || kundaliData.isVisible !== savedKundaliData.isVisible;
   const currentPhoto = user?.photos?.[0];
 
-  // Resolve photo URL so frontend points to backend when URL is relative
   const resolvePhotoUrl = (url) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
-    // normalize base so it does not end with /api
     let base = API_BASE_URL;
     if (base.endsWith('/api')) base = base.slice(0, -4);
     if (base.endsWith('/')) base = base.slice(0, -1);
-    // ensure url begins with '/'
     if (!url.startsWith('/')) url = `/${url}`;
     return `${base}${url}`;
   };
 
-  // Photo src state with fallback fetch on error (handles proxy/CORS quirks)
   const [photoSrc, setPhotoSrc] = useState('');
   const [objectUrl, setObjectUrl] = useState(null);
 
@@ -401,25 +397,7 @@ const Profile = () => {
         setObjectUrl(null);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPhoto?.url]);
-
-  const handleImgError = async () => {
-    if (!currentPhoto?.url) return;
-    try {
-      const url = resolvePhotoUrl(currentPhoto.url);
-      // Try fetching image as blob and create object URL
-      const resp = await api.get(url, { responseType: 'blob' });
-      const blob = resp.data;
-      const blobUrl = URL.createObjectURL(blob);
-      // revoke previous
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      setObjectUrl(blobUrl);
-      setPhotoSrc(blobUrl);
-    } catch (err) {
-      console.error('Photo fetch fallback failed:', err);
-    }
-  };
 
   return (
     <MainLayout>
@@ -442,10 +420,8 @@ const Profile = () => {
             >
               <div className="mb-6">
                 <div className="w-full aspect-square bg-gray-200 rounded-lg mb-4 flex items-center justify-center text-5xl overflow-hidden relative group">
-                      {currentPhoto?.url ? (
-                    <>
-                      <img src={resolvePhotoUrl(currentPhoto.url)} alt={user.firstName || 'Profile'} className="w-full h-full object-cover" />
-                    </>
+                  {currentPhoto?.url ? (
+                    <img src={resolvePhotoUrl(currentPhoto.url)} alt={user.firstName || 'Profile'} className="w-full h-full object-cover" />
                   ) : (
                     '👤'
                   )}
@@ -570,6 +546,9 @@ const Profile = () => {
                 <p className="text-lg font-semibold text-gray-900">{displayedKundali.moonSign || 'Not generated yet'}</p>
               </div>
             </div>
+
+            {/* Visual Kundali Patra Component Integration */}
+            <KundaliPatraView kundaliData={displayedKundali} />
 
             <div className="mt-4 flex items-center gap-2">
               <input type="checkbox" name="isVisible" checked={kundaliData.isVisible} onChange={handleKundaliChange} disabled={!isKundaliEditing} className="w-4 h-4 text-blue-600 rounded" />
